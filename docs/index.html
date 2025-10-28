@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Prueba Técnica – SecureMessageService (Ciberseguridad)</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #fafbfc; color: #23272f; margin: 0; padding: 0; }
+  .container { max-width: 950px; margin: 40px auto; background: #fff; box-shadow: 0 8px 32px rgba(0,0,0,0.08); border-radius: 10px; padding: 32px 40px; }
+  h1 { color: #1565c0; }
+  h2 { color: #2e7d32; margin-top: 32px; }
+  h3 { color: #7b1fa2; margin-top: 24px; }
+  .note { background: #e3f2fd; border-left: 4px solid #1976d2; padding: 16px 20px; margin: 18px 0; border-radius: 7px; }
+  .note ul { list-style: disc inside; margin: 0; padding-left: 1.2em; }
+  .note li { margin-bottom: 3px; line-height: 1.35; }
+  .footer { text-align: right; color: #888; font-size: 1em; margin-top: 40px; }
+  .tag { background: #e3f2fd; color: #1565c0; border-radius: 4px; padding: 3px 8px; margin-left: 6px; font-size: 0.95em; }
+  pre { background: #f6f8fa; padding: 14px; border-radius: 8px; overflow: auto; font-size: 0.92em; }
+  code { font-family: Consolas, 'Courier New', monospace; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Prueba Técnica – SecureMessageService</h1>
+<p>Objetivo: Construir un microservicio seguro llamado <strong>SecureMessageService</strong> para el envío, almacenamiento y procesamiento de mensajes sensibles, cumpliendo todas las responsabilidades, requisitos obligatorios y nice to have del JD, con <strong>ciberseguridad avanzada</strong> y flujo completo de procesamiento asíncrono e integración con LLMs.</p>
+<p><a href="JobDescription.html" target="_blank">Job Description Original</a></p>
+<h2>Enunciado Detallado con Requerimientos Concretos</h2>
+
+<h3>Problema específico</h3>
+<p>Desarrollar un microservicio que permita a usuarios enviar mensajes sensibles, procesarlos con tareas en background y LLMs, garantizando seguridad, integridad y disponibilidad. Todos los endpoints y flujos deben tener validación estricta, cifrado de datos en tránsito y en reposo, control de acceso por roles y logging seguro.</p>
+
+<h3>Endpoints y Flujos</h3>
+<div class="note">
+  <p><span class="tag">POST /messages</span> (<strong>2.1 JD</strong>)</p>
+  <ul>
+    <li>Parámetros: <code>{"user_id": string, "content": string}</code></li>
+    <li>Validaciones: contenido no vacío, max 5000 caracteres, sanitización contra XSS/NoSQL injection</li>
+    <li>Procesamiento interno: cifrar mensaje AES, guardar en MongoDB con metadata {created_at, status="queued", processed_at=null} (<strong>2.2 JD</strong>)</li>
+    <li>Seguridad: JWT obligatorio, solo roles 'user', logging seguro (<strong>2.8 JD</strong>)</li>
+    <li>Respuesta: <code>{"message_id": string, "status": "queued"}</code></li>
+  </ul>
+
+  <p><span class="tag">GET /messages/{id}</span> (<strong>2.1 JD</strong>)</p>
+  <ul>
+    <li>Parámetros: <code>{message_id: string}</code></li>
+    <li>Procesamiento interno: desencriptar contenido solo si el rol tiene acceso, validar existencia y estado (<strong>2.2 JD</strong>)</li>
+    <li>Seguridad: JWT obligatorio, logs cifrados (<strong>2.8 JD</strong>)</li>
+    <li>Respuesta: <code>{"message_id": string, "content": string, "status": string, "created_at": datetime}</code></li>
+  </ul>
+
+  <p><span class="tag">POST /process</span> (<strong>2.7 JD</strong>)</p>
+  <ul>
+    <li>Parámetros: <code>{message_id: string}</code></li>
+    <li>Procesamiento: enviar contenido al LLM (mock si no hay API key), procesar resultados, almacenar output cifrado (<strong>4.4 JD</strong>)</li>
+    <li>Seguridad: no exponer datos sensibles en prompts, JWT obligatorio, control de roles, logs seguros (<strong>2.8 JD</strong>)</li>
+    <li>Respuesta: <code>{"message_id": string, "status": "processed", "processed_at": datetime}</code></li>
+  </ul>
+</div>
+
+<h3>Procesamiento en Background</h3>
+<div class="note">
+  <ul>
+    <li>Tareas Celery para resumir o analizar contenido sensible de mensajes de manera asíncrona (<strong>2.3 JD</strong>)</li>
+    <li>Retries automáticos seguros ante fallos</li>
+    <li>Integración con RabbitMQ/Redis (<strong>2.3 JD</strong>)</li>
+    <li>Logs cifrados y métricas de rendimiento (<strong>2.8 JD</strong>)</li>
+    <li>Pruebas unitarias y de integración de tareas asíncronas (<strong>2.5 JD</strong>)</li>
+  </ul>
+</div>
+
+<h3>Flujos Event-driven y Arquitectura Distribuida</h3>
+<div class="note">
+  <ul>
+    <li>Cada mensaje enviado dispara un evento interno que ejecuta tareas en background (<strong>2.4 JD</strong>)</li>
+    <li>Diseño modular y escalable, siguiendo patrones event-driven y arquitectura distribuida (<strong>2.10 JD</strong>)</li>
+    <li>Optimización de concurrencia y paralelismo (<strong>3.5 JD</strong>)</li>
+    <li>Colaboración con frontend para integración React, Redux, TypeScript, Tailwind (<strong>2.9 JD</strong>)</li>
+  </ul>
+</div>
+
+<h3>Seguridad y Ciberseguridad</h3>
+<div class="note">
+  <ul>
+    <li>Cifrado de datos en tránsito (TLS 1.2+) y en reposo (AES-256)</li>
+    <li>Control de acceso basado en roles (JWT, 'user' / 'admin') (<strong>2.1 JD</strong>)</li>
+    <li>Validación y sanitización estricta de todos los inputs (<strong>2.1 JD</strong>)</li>
+    <li>Logging seguro y auditoría de accesos (<strong>2.8 JD</strong>)</li>
+    <li>Rate limiting y protección contra ataques de fuerza bruta</li>
+    <li>Headers de seguridad: CSP, HSTS, X-Content-Type-Options</li>
+  </ul>
+</div>
+
+<h3>Requisitos obligatorios (JD)</h3>
+<div class="note">
+  <ul>
+    <li>3–5 años en backend con Python (<strong>3.1 JD</strong>)</li>
+    <li>FastAPI, Pydantic, asyncio y programación asíncrona (<strong>3.2 JD</strong>)</li>
+    <li>Celery, RabbitMQ/Redis (<strong>3.3 JD</strong>)</li>
+    <li>MongoDB + Beanie (<strong>3.4 JD</strong>)</li>
+    <li>Arquitectura distribuida, event-driven, concurrencia (<strong>3.5 JD</strong>)</li>
+    <li>Testing automatizado: pytest, unittest.mock (<strong>3.6 JD</strong>)</li>
+    <li>Docker Compose + AWS/GCP, gestión de entornos de desarrollo y despliegue (<strong>2.6 JD</strong>, <strong>3.7 JD</strong>)</li>
+    <li>Workflow orchestration y message brokers (<strong>3.8 JD</strong>)</li>
+    <li>Integración de APIs LLM (<strong>3.9 JD</strong>)</li>
+    <li>Git y metodologías ágiles (<strong>3.10 JD</strong>)</li>
+    <li>Inglés B2/C1 (<strong>3.11 JD</strong>)</li>
+    <li>Alta autonomía y autogestión (<strong>3.12 JD</strong>)</li>
+  </ul>
+</div>
+
+<h3>Nice to Have (JD)</h3>
+<div class="note">
+  <ul>
+    <li>Integraciones con GitHub Apps, Actions u OAuth (<strong>4.1 JD</strong>)</li>
+    <li>TypeScript, Zod, Axios, Jest, ESLint (<strong>4.2 JD</strong>)</li>
+    <li>CI/CD pipelines y monitoreo (<strong>4.3 JD</strong>)</li>
+    <li>Conocimientos LLM / IA generativa (<strong>4.4 JD</strong>)</li>
+    <li>Mejora continua y tecnologías cloud-native (<strong>4.5 JD</strong>)</li>
+  </ul>
+</div>
+
+<h3>Entregables</h3>
+<div class="note">
+  <ul>
+    <li>Repositorio Git con todo el código implementado</li>
+    <li>Docker Compose levantando API, MongoDB, Redis, Celery</li>
+    <li>JWT configurado con roles 'user' / 'admin'</li>
+    <li>Mensajes cifrados en MongoDB</li>
+    <li>Logging seguro y manejo de errores</li>
+    <li>Unit tests e integración ejecutables</li>
+    <li>Mock funcional de integración con LLM</li>
+    <li>README detallando arquitectura, endpoints, flujos y medidas de seguridad</li>
+  </ul>
+</div>
+
+<div class="footer">
+  Prueba Técnica – SecureMessageService | Solution Architect / Tech Lead
+</div>
+</div>
+</body>
+</html>
