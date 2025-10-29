@@ -3,7 +3,7 @@ REST controllers for SecureMessageService - initial implementation.
 
 Implements:
 - POST /messages : create message (validation + sanitization, returns queued)
-- GET /messages/{id} : placeholder
+- GET /messages/{id} : implemented (decrypt + RBAC using mock JWT)
 - POST /process : placeholder
 
 This implementation focuses on input validation and returning a stable response
@@ -13,9 +13,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
-from typing import Optional
+from typing import Optional, Dict, Any
 import html
 import re
+import datetime
+
+# Import encryption utilities
+from src.secure_message_service.adapter.persistence.encryption import (
+    AESEncryptionService,
+    load_encryption_key_from_env,
+)
 
 router = APIRouter()
 security = HTTPBearer(auto_error=False)
@@ -29,6 +36,14 @@ class CreateMessageRequest(BaseModel):
 class CreateMessageResponse(BaseModel):
     message_id: UUID
     status: str
+
+
+class GetMessageResponse(BaseModel):
+    message_id: UUID
+    content: str
+    status: str
+    created_at: datetime.datetime
+    processed_at: Optional[datetime.datetime] = None
 
 
 def sanitize_content(content: str) -> str:
@@ -54,6 +69,20 @@ def verify_jwt(credentials: Optional[HTTPAuthorizationCredentials] = Depends(sec
     return {"sub": sub, "role": role}
 
 
+# Simple in-memory message store for incremental development.
+# Schema: { UUID: { 'message_id': UUID, 'user_id': UUID, 'encrypted_content': str, 'status': str, 'created_at': datetime, 'processed_at': Optional[datetime] } }
+MESSAGE_STORE: Dict[UUID, Dict[str, Any]] = {}
+
+# Initialize encryption service. Prefer env var; fall back to a deterministic dev key if unset.
+try:
+    _KEY = load_encryption_key_from_env('ENCRYPTION_KEY')
+except EnvironmentError:
+    # Development fallback key (NOT for production)
+    _KEY = b"\x00" * 32
+
+_encryption_svc = AESEncryptionService(_KEY)
+
+
 @router.post('/messages', response_model=CreateMessageResponse, status_code=status.HTTP_201_CREATED)
 async def create_message(req: CreateMessageRequest, jwt=Depends(verify_jwt)):
     # Only 'user' and 'admin' roles allowed
@@ -70,14 +99,49 @@ async def create_message(req: CreateMessageRequest, jwt=Depends(verify_jwt)):
     if not sanitized:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Content invalid after sanitization')
 
-    # Return queued status and generated id (persistence will be added later)
-    return CreateMessageResponse(message_id=uuid4(), status='queued')
+    # Persist the message to the in-memory store (encrypt before storing)
+    message_id = uuid4()
+    created_at = datetime.datetime.utcnow()
+    encrypted = _encryption_svc.encrypt(sanitized)
+    MESSAGE_STORE[message_id] = {
+        'message_id': message_id,
+        'user_id': req.user_id,
+        'encrypted_content': encrypted,
+        'status': 'queued',
+        'created_at': created_at,
+        'processed_at': None,
+    }
+
+    return CreateMessageResponse(message_id=message_id, status='queued')
 
 
-@router.get('/messages/{message_id}')
+@router.get('/messages/{message_id}', response_model=GetMessageResponse)
 async def get_message(message_id: UUID, jwt=Depends(verify_jwt)):
-    # Placeholder until persistence & decryption implemented
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail='Not implemented')
+    # Retrieve stored message
+    record = MESSAGE_STORE.get(message_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Message not found')
+
+    # RBAC: allow if admin or owner (jwt.sub matches stored user_id)
+    role = jwt.get('role')
+    sub = jwt.get('sub')
+    owner_id = str(record['user_id']) if record.get('user_id') is not None else None
+    if role != 'admin' and sub != owner_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Forbidden')
+
+    # Decrypt content
+    try:
+        plaintext = _encryption_svc.decrypt(record['encrypted_content'])
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Decryption failed')
+
+    return GetMessageResponse(
+        message_id=record['message_id'],
+        content=plaintext,
+        status=record['status'],
+        created_at=record['created_at'],
+        processed_at=record['processed_at'],
+    )
 
 
 @router.post('/process')
